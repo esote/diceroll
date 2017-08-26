@@ -42,7 +42,7 @@ struct program_args {
 		stat_avg, bad_random, list, quiet, numbers_force,
 		flags;
 	std::vector<std::string> prefix, suffix, contains;
-	std::string delim = "\n", generator = "mt19937", dist = "uniform_real_distribution";
+	std::string delim = "\n", generator = "mt19937";
 };
 
 returnID parse_args(program_args & args, int argc, char const * const * argv) {
