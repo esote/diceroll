@@ -58,7 +58,7 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 		("delim", po::value<std::string>(&args.delim),
 			"change the delimiter")
 		("numbers-force", po::bool_switch(&args.numbers_force)->default_value(false),
-			"force the count of numbers printed to be equal to the number specified")
+			"force the count of numbers printed to be equal to --number")
 		("flags", po::bool_switch(&args.flags)->default_value(false),
 			"print the flags");
 
@@ -94,7 +94,7 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 		("include", po::value<std::vector<long double> >(&args.included)->multitoken(),
 			"print only the numbers exactly specified, best with rounding ")
 		("norepeat", po::bool_switch(&args.norepeat)->default_value(false),
-			"exclude repeated numbers from being printed, best with a rounding option")
+			"exclude repeated numbers from being printed, best with rounding")
 		("prefix", po::value<std::vector<std::string> >(&args.prefix)->multitoken(),
 			"only print if the number begins with string(s)")
 		("suffix", po::value<std::vector<std::string> >(&args.suffix)->multitoken(),
@@ -134,8 +134,8 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 	}
 
 	if(args.precision > ld_prec) {
-		std::cerr << "error: --precision cannot be greater than the precision for <long double> ("
-			<< ld_prec << ")\n";
+		std::cerr << "error: --precision cannot be greater than the precision"
+			" for <long double> (" << ld_prec << ")\n";
 		return returnID::overd_err;
 	}
 
@@ -145,14 +145,15 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 	}
 
 	if(args.number <= 0) {
-		std::cerr << "error: the argument for option '--number' is invalid (must be >= 1)\n";
+		std::cerr << "error: the argument for option '--number' is invalid"
+			" (must be >= 1)\n";
 		return returnID::zero_err;
 	}
 
-	const std::vector<std::string> gen_options {{"minstd_rand0", "minstd_rand", "mt19937",
-		"mt19937_64", "ranlux24_base", "ranlux48_base", "ranlux24",
+	const std::vector<std::string> gen_opts {{"minstd_rand0", "minstd_rand",
+		"mt19937", "mt19937_64", "ranlux24_base", "ranlux48_base", "ranlux24",
 		"ranlux48", "knuth_b", "default_random_engine", "badrandom"}};
-	if(std::find(gen_options.begin(), gen_options.end(), args.generator) == gen_options.end()) {
+	if(std::find(gen_opts.begin(), gen_opts.end(), args.generator) == gen_opts.end()) {
 		std::cerr << "error: --generator must be: minstd_rand0, minstd_rand, "
 			"mt19937, mt19937_64, ranlux24_base, ranlux48_base, "
 			"ranlux24, ranlux48, knuth_b, default_random_engine, badrandom\n";
@@ -160,7 +161,8 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 	}
 
 	if(args.ceil + args.floor + args.round + args.trunc > 1) {
-		std::cerr << "error: --ceil, --floor, --round, and --trunc are mutually exclusive\n";
+		std::cerr << "error: --ceil, --floor, --round, and --trunc"
+			" are mutually exclusive\n";
 		return returnID::conflict_err;
 	}
 
@@ -203,7 +205,9 @@ long double random(const program_args & args) {
 	else return r_gen<std::mt19937>(args)();
 }
 
-bool filter(const long double rand, const int precision, const std::vector<std::string> & fx, bool(*predicate)(const std::string&, const std::string&)) {
+bool filter(const long double rand, const int precision,
+		const std::vector<std::string> & fx,
+		bool(*predicate)(const std::string&, const std::string&)) {
 	std::ostringstream oss;
 	oss << std::fixed << std::setprecision(precision) << rand;
 	const auto str_rand = oss.str();
@@ -253,7 +257,7 @@ int main(int argc, char* argv[]) {
 				continue;
 
 			generated.push_back(rand);
-			
+
 			if(!args.quiet) {
 				if(args.list && args.numbers_force) std::cout << i << ". ";
 				if(args.list) std::cout << list_cnt << ". ";
@@ -284,6 +288,7 @@ int main(int argc, char* argv[]) {
 				median = (median + *std::max_element(generated.begin(), midpoint)) / 2;
 			std::cout << std::fixed << "median: " << median << '\n';
 		}
+
 		if(args.stat_all || args.stat_avg) {
 			long double avg = std::accumulate(generated.begin(), generated.end(), 0.0) / generated.size();
 			std::cout << std::fixed << "avg: " << avg << '\n';
