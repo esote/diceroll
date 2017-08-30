@@ -9,130 +9,163 @@
 #include <vector>
 
 enum returnID {
+	success_help = -1,
 	success = 0,
-	known_err = 1,
-	other_err = 2,
-	zero_err = 3, 
-	conflict_err = 4,
-	overd_err = 5,
-	underd_err = 6,
-	exclude_err = 7,
-	round_prec = 8,
-	vect_nan = 9,
-	gen_err = 10,
-	dist_err = 11,
-	success_help = -1
+
+	overd_err = 1,
+	underd_err = 2,
+	zero_err = 3,
+	gen_err = 4,
+	conflict_err = 5,
+	vect_nan = 6,
+	known_err = 7,
+	other_err = 8
 };
 
-bool filter(const long double rand, const int precision, const std::vector<std::string> & fx, bool(*predicate)(const std::string&, const std::string&)) {
-	std::ostringstream oss;
-	oss << std::fixed << std::setprecision(precision) << rand;
-	const auto str_rand = oss.str();
-	return std::none_of(fx.begin(), fx.end(), [&](auto const & s) { return predicate(str_rand, s); });
-}
-
-
 struct program_args {
+	// general
+	int precision;
+	bool quiet, list, numbers_force, flags;
+	std::string delim = "\n";
+	// intern
 	long long number;
 	long double lbound, ubound;
-	bool ceil, floor, round, trunc; // mutually exclusive
-	int precision;
-	std::vector<long double> excluded;
-	bool norepeat, stat_min, stat_max, stat_median,
-		stat_avg, bad_random, list, quiet, numbers_force,
-		flags;
+	std::string generator;
+	// rounding
+	bool ceil, floor, round, trunc;
+	// matcher
+	std::vector<long double> excluded, included;
+	bool norepeat;
 	std::vector<std::string> prefix, suffix, contains;
-	std::string delim = "\n", generator = "mt19937";
+	// stats
+	bool stat_all, stat_min, stat_max, stat_median,
+		stat_avg, stat_var, stat_std, stat_coef;
 };
 
 returnID parse_args(program_args & args, int argc, char const * const * argv) {
 	static auto const ld_prec = std::numeric_limits<long double>::max_digits10;
 
 	namespace po = boost::program_options;
-	po::options_description desc("Options");
-	desc.add_options()
+	po::options_description general("General options");
+	general.add_options()
 		("help,h", "produce this help message")
-		("number,n", po::value<long long>(&args.number)->default_value(1),
-			"count of numbers to be generated")
-		("lbound,l", po::value<long double>(&args.lbound)->default_value(0.0),
-			"minimum number (ldouble) to be generated")
-		("ubound,u", po::value<long double>(&args.ubound)->default_value(1.0),
-			"maximum number (ldouble) to be generated")
-		("ceil,c", po::bool_switch(&args.ceil)->default_value(false),
-			"apply ceiling function to numbers")
-		("floor,f", po::bool_switch(&args.floor)->default_value(false),
-			"apply floor function to numbers")
-		("round,r", po::bool_switch(&args.round)->default_value(false),
-			"apply round function to numbers")
-		("trunc,t", po::bool_switch(&args.trunc)->default_value(false),
-			"apply truncation to numbers")
 		("precision,p", po::value<int>(&args.precision)->default_value(ld_prec), 
-			"output precision (not internal precision, cannot be > ldouble precision)")
-		("exclude,x", po::value<std::vector<long double> >(&args.excluded)->multitoken(), 
-			"exclude numbers from being printed, best with --ceil, --floor, --round, or --trunc")
-		("norepeat", po::bool_switch(&args.norepeat)->default_value(false), 
-			"exclude repeated numbers from being printed, best with --ceil, --floor, --round, or --trunc")
-		("stat-min", po::bool_switch(&args.stat_min)->default_value(false), 
-			"print the lowest value generated")
-		("stat-max", po::bool_switch(&args.stat_max)->default_value(false),
-			"print the highest value generated")
-		("stat-median", po::bool_switch(&args.stat_median)->default_value(false),
-			"print the median of the values generated")
-		("stat-avg", po::bool_switch(&args.stat_avg)->default_value(false),
-			"print the average of the values generated")
-		("prefix", po::value<std::vector<std::string> >(&args.prefix)->multitoken(),
-			"only print when the number begins with string(s)")
-		("suffix", po::value<std::vector<std::string> >(&args.suffix)->multitoken(),
-			"only print when the number ends with string(s)")
-		("contains", po::value<std::vector<std::string> >(&args.contains)->multitoken(),
-			"only print when the number contains string(s)")
+			"output precision (not internal precision)")
+		("quiet,q", po::bool_switch(&args.quiet)->default_value(false),
+			"disable number output, useful with stats")
 		("list", po::bool_switch(&args.list)->default_value(false),
-			"print numbers in a list with positional numbers prefixed")
+			"print numbers in a list")
 		("delim", po::value<std::string>(&args.delim),
 			"change the delimiter")
-		("quiet,q", po::bool_switch(&args.quiet)->default_value(false),
-			"disable number output, useful when paired with stats")
 		("numbers-force", po::bool_switch(&args.numbers_force)->default_value(false),
-			"force the count of numbers output to be equal to the number specified")
-		("generator,g", po::value<std::string>(&args.generator),
-			"change algorithm for the RNG:\n - minstd_rand0\n - minstd_rand"
-			"\n - mt19937 (default)\n - mt19937_64\n - ranlux24_base\n - ranlux48_base"
-			"\n - ranlux24\n - ranlux48\n - knuth_b\n - default_random_engine"
-			"\n - badrandom (std::rand)")
+			"force the count of numbers printed to be equal to the number specified")
 		("flags", po::bool_switch(&args.flags)->default_value(false),
 			"print the flags");
 
+	po::options_description intern("Internal RNG options");
+	intern.add_options()
+		("number,n", po::value<long long>(&args.number)->default_value(1),
+			"count of numbers to be generated")
+		("lbound,l", po::value<long double>(&args.lbound)->default_value(0.0),
+			"minimum number (ldouble)")
+		("ubound,u", po::value<long double>(&args.ubound)->default_value(1.0),
+			"maximum number (ldouble)")
+		("generator,g", po::value<std::string>(&args.generator)->default_value("mt19937"),
+			"change the RNG algorithm:\nminstd_rand0, minstd_rand"
+			"\nmt19937, mt19937_64\nranlux24_base, ranlux48_base"
+			"\nranlux24, ranlux48\nknuth_b, default_random_engine"
+			"\nbadrandom (std::rand)");
+
+	po::options_description rounding("Rounding options");
+	rounding.add_options()
+		("ceil,c", po::bool_switch(&args.ceil)->default_value(false),
+			"apply ceiling function")
+		("floor,f", po::bool_switch(&args.floor)->default_value(false),
+			"apply floor function")
+		("round,r", po::bool_switch(&args.round)->default_value(false),
+			"apply round function")
+		("trunc,t", po::bool_switch(&args.trunc)->default_value(false),
+			"apply truncation");
+
+	po::options_description matcher("Matcher options");
+	matcher.add_options()
+		("exclude", po::value<std::vector<long double> >(&args.excluded)->multitoken(), 
+			"print only the numbers not exactly specified, best with rounding")
+		("include", po::value<std::vector<long double> >(&args.included)->multitoken(),
+			"print only the numbers exactly specified, best with rounding ")
+		("norepeat", po::bool_switch(&args.norepeat)->default_value(false),
+			"exclude repeated numbers from being printed, best with a rounding option")
+		("prefix", po::value<std::vector<std::string> >(&args.prefix)->multitoken(),
+			"only print if the number begins with string(s)")
+		("suffix", po::value<std::vector<std::string> >(&args.suffix)->multitoken(),
+			"only print if the number ends with string(s)")
+		("contains", po::value<std::vector<std::string> >(&args.contains)->multitoken(),
+			"only print if the number contains string(s)");
+
+	po::options_description stats("Statistics options");
+	stats.add_options()
+		("stat-all", po::bool_switch(&args.stat_all)->default_value(false),
+			"print all statistics")
+		("stat-min", po::bool_switch(&args.stat_min)->default_value(false), 
+			"print the minimum")
+		("stat-max", po::bool_switch(&args.stat_max)->default_value(false),
+			"print the maximum")
+		("stat-median", po::bool_switch(&args.stat_median)->default_value(false),
+			"print the median")
+		("stat-avg", po::bool_switch(&args.stat_avg)->default_value(false),
+			"print the average")
+		("stat-var", po::bool_switch(&args.stat_var)->default_value(false),
+			"print the variance")
+		("stat-std", po::bool_switch(&args.stat_std)->default_value(false),
+			"print the standard deviation")
+		("stat-coef", po::bool_switch(&args.stat_coef)->default_value(false),
+			"print the coefficient of variation");
+
+	po::options_description all("Allowed options");
+	all.add(general).add(intern).add(rounding).add(matcher).add(stats);
+
 	po::variables_map vm;
-	po::store(po::parse_command_line(argc, argv, desc), vm);
+	po::store(po::parse_command_line(argc, argv, all), vm);
 	po::notify(vm);
 
 	if(vm.count("help")) {
-		std::cout << desc << '\n';
+		std::cout << all << '\n';
 		return returnID::success_help;
 	}
-	if(args.number <= 0) {
-		std::cerr << "error: the argument for option '--number' is invalid (n must be >= 1)\n";
-		return returnID::zero_err;
-	}
-	if(args.ceil + args.floor + args.round + args.trunc > 1) {
-		std::cerr << "error: --ceil, --floor, --round, and --trunc are mutually exclusive\n";
-		return returnID::conflict_err;
-	}
-	if(args.ceil || args.floor || args.round || args.trunc) {
-		args.precision = 0;
-	}
+
 	if(args.precision > ld_prec) {
 		std::cerr << "error: --precision cannot be greater than the precision for <long double> ("
 			<< ld_prec << ")\n";
 		return returnID::overd_err;
 	}
+
 	if(args.precision <= -1) {
-		std::cerr << "error: --precision cannot be less than zero\n";
+		std::cerr << "error: --precision cannot be < 0\n";
 		return returnID::underd_err;
 	}
-	if(vm.count("exclude") && vm["exclude"].empty()) {
-		std::cerr << "error: --exclude was specified without arguments (arguments are separated by spaces)\n";
-		return returnID::exclude_err;
+
+	if(args.number <= 0) {
+		std::cerr << "error: the argument for option '--number' is invalid (must be >= 1)\n";
+		return returnID::zero_err;
+	}
+
+	const std::vector<std::string> gen_options {{"minstd_rand0", "minstd_rand", "mt19937",
+		"mt19937_64", "ranlux24_base", "ranlux48_base", "ranlux24",
+		"ranlux48", "knuth_b", "default_random_engine", "badrandom"}};
+	if(std::find(gen_options.begin(), gen_options.end(), args.generator) == gen_options.end()) {
+		std::cerr << "error: --generator must be: minstd_rand0, minstd_rand, "
+			"mt19937, mt19937_64, ranlux24_base, ranlux48_base, "
+			"ranlux24, ranlux48, knuth_b, default_random_engine, badrandom\n";
+		return returnID::gen_err;
+	}
+
+	if(args.ceil + args.floor + args.round + args.trunc > 1) {
+		std::cerr << "error: --ceil, --floor, --round, and --trunc are mutually exclusive\n";
+		return returnID::conflict_err;
+	}
+
+	if(args.ceil || args.floor || args.round || args.trunc) {
+		args.precision = 0;
 	}
 	
 	std::vector<std::vector<std::string> > filters = {{args.prefix, args.suffix, args.contains}};
@@ -145,22 +178,13 @@ returnID parse_args(program_args & args, int argc, char const * const * argv) {
 		}
 	}
 
-	const std::vector<std::string> gen_options {{"minstd_rand0", "minstd_rand", "mt19937",
-		"mt19937_64", "ranlux24_base", "ranlux48_base", "ranlux24",
-		"ranlux48", "knuth_b", "default_random_engine", "badrandom"}};
-	if(std::find(gen_options.begin(), gen_options.end(), args.generator) == gen_options.end()) {
-		std::cerr << "error: --generator must be: minstd_rand0, minstd_rand, "
-			"mt19937, mt19937_64, ranlux24_base, ranlux48_base, "
-			"ranlux24, ranlux48, knuth_b, default_random_engine, badrandom\n";
-		return returnID::gen_err;
-	}
-	
 	return returnID::success;
 }
 
-template<typename GEN> std::function<long double()> r_gen(const program_args & args) {
+template<typename GEN = std::mt19937, typename DIST = std::uniform_real_distribution<long double> >
+std::function<long double()> r_gen(const program_args & args) {
 	GEN generator{std::random_device{}()};
-	std::uniform_real_distribution<long double> dis{args.lbound, args.ubound};
+	DIST dis{args.lbound, args.ubound};
 	return [dis, generator]() mutable -> auto { return dis(generator); };
 }
 
@@ -179,11 +203,18 @@ long double random(const program_args & args) {
 	else return r_gen<std::mt19937>(args)();
 }
 
-int main(int ac, char* av[]) {
+bool filter(const long double rand, const int precision, const std::vector<std::string> & fx, bool(*predicate)(const std::string&, const std::string&)) {
+	std::ostringstream oss;
+	oss << std::fixed << std::setprecision(precision) << rand;
+	const auto str_rand = oss.str();
+	return std::none_of(fx.begin(), fx.end(), [&](auto const & s) { return predicate(str_rand, s); });
+}
+
+int main(int argc, char* argv[]) {
 	try {
 		program_args args;
 
-		switch(auto result = parse_args(args, ac, av)) {
+		switch(auto result = parse_args(args, argc, argv)) {
 			case returnID::success: break;
 			case returnID::success_help: return 0;
 			default: return result;
@@ -194,6 +225,7 @@ int main(int ac, char* av[]) {
 		std::cout.precision(args.precision);
 
 		if(args.generator == "badrandom") std::srand(std::time(nullptr));
+
 		long long list_cnt = 0;
 
 		for(long long i = 1; i <= args.number;) {
@@ -209,6 +241,8 @@ int main(int ac, char* av[]) {
 
 			if(!args.excluded.empty() && std::find(args.excluded.begin(), args.excluded.end(), rand) != args.excluded.end())
 				continue;
+			else if(!args.included.empty() && std::find(args.included.begin(), args.included.end(), rand) == args.included.end())
+				continue;
 			else if(args.norepeat && std::find(generated.begin(), generated.end(), rand) != generated.end())
 				continue;
 			else if(!args.prefix.empty() && filter(rand, args.precision, args.prefix, boost::starts_with))
@@ -221,8 +255,8 @@ int main(int ac, char* av[]) {
 			generated.push_back(rand);
 			
 			if(!args.quiet) {
-				if(args.list && args.numbers_force) std::cout << i << ".\t";
-				if(args.list) std::cout << list_cnt << ".\t";
+				if(args.list && args.numbers_force) std::cout << i << ". ";
+				if(args.list) std::cout << list_cnt << ". ";
 				std::cout << std::fixed << rand << args.delim;
 				if(args.numbers_force) ++i;
 			}
@@ -230,57 +264,91 @@ int main(int ac, char* av[]) {
 
 		if(args.delim != "\n" && !args.quiet) std::cout << '\n';
 
-		if((args.stat_min || args.stat_max || args.stat_median || args.stat_avg) && !args.quiet)
+		if((args.stat_all || args.stat_min || args.stat_max || args.stat_median || args.stat_avg
+			|| args.stat_var || args.stat_std || args.stat_coef) && !args.quiet)
 			std::cout << '\n';
 
-		if(args.stat_min || args.stat_max) {
+		if(args.stat_all || args.stat_min || args.stat_max) {
 			auto minmax = std::minmax_element(generated.begin(), generated.end());
-			if(args.stat_min) std::cout << "min: " << *minmax.first << '\n';
-			if(args.stat_max) std::cout << "max: " << *minmax.second << '\n';
+			if(args.stat_all || args.stat_min)
+				std::cout << std::fixed << "min: " << *minmax.first << '\n';
+			if(args.stat_all || args.stat_max)
+				std::cout << std::fixed << "max: " << *minmax.second << '\n';
 		}
 
-		if(args.stat_median) {
+		if(args.stat_all || args.stat_median) {
 			auto midpoint = generated.begin() + generated.size() / 2;
 			std::nth_element(generated.begin(), midpoint, generated.end());
 			auto median = *midpoint;
 			if(generated.size() % 2 == 0)
 				median = (median + *std::max_element(generated.begin(), midpoint)) / 2;
-			std::cout << "median: " << median << '\n';
+			std::cout << std::fixed << "median: " << median << '\n';
 		}
-		if(args.stat_avg) {
-			long double sum = std::accumulate(generated.begin(), generated.end(), 0.0);
-			std::cout << "avg: " << sum / generated.size() << '\n';
+		if(args.stat_all || args.stat_avg) {
+			long double avg = std::accumulate(generated.begin(), generated.end(), 0.0) / generated.size();
+			std::cout << std::fixed << "avg: " << avg << '\n';
+		}
+
+		if(args.stat_all || args.stat_var) {
+			long double avg = std::accumulate(generated.begin(), generated.end(), 0.0) / generated.size();
+			long double var = 0.0;
+			for(const auto & i : generated) var += std::pow(i - avg, 2);
+			std::cout << std::fixed << "variance: " << var / generated.size() << '\n';
+		}
+
+		if(args.stat_all || args.stat_std) {
+			long double avg = std::accumulate(generated.begin(), generated.end(), 0.0) / generated.size();
+			long double std = 0.0;
+			for(const auto & i : generated) std += std::pow(i - avg, 2);
+			std::cout << std::fixed << "standard deviation: " << std::sqrt(std / generated.size()) << '\n';
+		}
+
+		if(args.stat_all || args.stat_coef) {
+			long double avg = std::accumulate(generated.begin(), generated.end(), 0.0) / generated.size();
+			long double std = 0.0;
+			for(const auto & i : generated) std += std::pow(i - avg, 2);
+			std::cout << std::fixed << "coefficient of variation: " << std::sqrt(std / generated.size()) / avg << '\n';
 		}
 
 		if(args.flags) {
-			std::cout << "\nhelp,h: " << "0"
-				<< "\nnumber,n: " << args.number
-				<< "\nlbound,l: " << args.lbound
-				<< "\nubound,u: " << args.ubound
-				<< "\nceil,c: " << args.ceil
-				<< "\nfloor,f: " << args.floor
-				<< "\nround,r: " << args.round
-				<< "\ntrunc,t: " << args.trunc
-				<< "\nprecision,p: " << args.precision
-				<< "\nexclude,x: ";
+			std::cout << "\nFlags:\n - General options:\n\thelp: 0"
+				<< "\n\tprecision: " << args.precision
+				<< "\n\tquiet: " << args.quiet
+				<< "\n\tlist: " << args.list
+				<< "\n\tnumbers-force: " << args.numbers_force
+				<< "\n\tflags: 1"
+				<< "\n\tdelim: " << args.delim
+				<< "\n - Internal RNG options:"
+				<< "\n\tnumber: " << args.number
+				<< "\n\tlbound: " << args.lbound
+				<< "\n\tubound: " << args.ubound
+				<< "\n\tgenerator: " << args.generator
+				<< "\n - Rounding options:"
+				<< "\n\tceil: " << args.ceil
+				<< "\n\tfloor: " << args.floor
+				<< "\n\tround: " << args.round
+				<< "\n\ttrunc: " << args.trunc
+				<< "\n - Matcher options:"
+				<< "\n\texclude: ";
 			for(const auto & i : args.excluded) std::cout << i << ' ';
-			std::cout << "\nnorepeat: " << args.norepeat
-				<< "\nstat-min: " << args.stat_min
-				<< "\nstat-max: " << args.stat_max
-				<< "\nstat-median: " << args.stat_median
-				<< "\nstat-avg: " << args.stat_avg
-				<< "\nprefix: ";
+			std::cout << "\n\tinclude: ";
+			for(const auto & i : args.included) std::cout << i << ' ';
+			std::cout << "\n\tnorepeat: " << args.norepeat
+				<< "\n\tprefix: ";
 			for(const auto & i : args.prefix) std::cout << i << ' ';
-			std::cout << "\nsuffix: ";
+			std::cout << "\n\tsuffix: ";
 			for(const auto & i : args.suffix) std::cout << i << ' ';
-			std::cout << "\ncontains: ";
+			std::cout << "\n\tcontains: ";
 			for(const auto & i : args.contains) std::cout << i << ' ';
-			std::cout << "\nlist: " << args.list
-				<< "\ndelim: " << args.delim
-				<< "\nquiet,q: " << args.quiet
-				<< "\nnumbers-force: " << args.numbers_force
-				<< "\ngenerator,g: " << args.generator
-				<< "\nflags: " << args.flags;
+			std::cout << "\n - Statistics options:"
+				<< "\n\tstat-all: " << args.stat_all
+				<< "\n\tstat-min: " << args.stat_min
+				<< "\n\tstat-max: " << args.stat_max
+				<< "\n\tstat-median: " << args.stat_median
+				<< "\n\tstat-avg: " << args.stat_avg
+				<< "\n\tstat-var: " << args.stat_var
+				<< "\n\tstat-std: " << args.stat_std
+				<< "\n\tstat-coef: " << args.stat_coef << '\n';
 		}
 
 		return returnID::success;
