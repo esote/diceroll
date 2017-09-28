@@ -1,1 +1,1 @@
-Refer to |coming soon|
+Refer to https://esote.net/diceroll.html
